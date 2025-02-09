@@ -1,7 +1,11 @@
 package com.fire.usercenterdemo.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.fire.usercenterdemo.common.BaseResponse;
+import com.fire.usercenterdemo.common.ErrorCode;
+import com.fire.usercenterdemo.common.ResultUtils;
 import com.fire.usercenterdemo.constant.UserConstant;
+import com.fire.usercenterdemo.exception.BusinessException;
 import com.fire.usercenterdemo.model.domain.User;
 import com.fire.usercenterdemo.model.dto.user.UserLoginRequest;
 import com.fire.usercenterdemo.model.dto.user.UserRegisterRequest;
@@ -14,6 +18,8 @@ import org.springframework.web.bind.annotation.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+
+import static com.fire.usercenterdemo.constant.UserConstant.USER_LOGIN_STATE;
 
 
 /**
@@ -35,21 +41,23 @@ public class UserController {
      * @return
      */
     @PostMapping("/register")
-    public Long userRegister(@RequestBody UserRegisterRequest userRegisterRequest) {
+    public BaseResponse<Long> userRegister(@RequestBody UserRegisterRequest userRegisterRequest) {
         if (userRegisterRequest == null) {
-            return null;
+            return ResultUtils.error(ErrorCode.PARAMS_ERROR);
         }
         String userAccount = userRegisterRequest.getUserAccount();
         String userPassword = userRegisterRequest.getUserPassword();
         String checkPassword = userRegisterRequest.getCheckPassword();
 
         if (StringUtils.isAnyBlank(userAccount, userPassword, checkPassword)) {
-            return null;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+
         }
 
-        return userService.userRegister(userAccount, userPassword, checkPassword);
+        long result =  userService.userRegister(userAccount, userPassword, checkPassword);
 
-
+//        return new BaseResponse<>(0,result,"ok");
+        return ResultUtils.success(result);
     }
 
     /**
@@ -59,19 +67,23 @@ public class UserController {
      * @return
      */
     @PostMapping("/login")
-    public User userLogin(@RequestBody UserLoginRequest userLoginRequest, HttpServletRequest request) {
+    public BaseResponse<User> userLogin(@RequestBody UserLoginRequest userLoginRequest, HttpServletRequest request) {
         if (userLoginRequest == null) {
-            return null;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+
         }
         String userAccount = userLoginRequest.getUserAccount();
         String userPassword = userLoginRequest.getUserPassword();
 
         if (StringUtils.isAnyBlank(userAccount, userPassword)) {
-            return null;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+
         }
 
-        return userService.userLogin(userAccount, userPassword, request);
+        User user = userService.userLogin(userAccount, userPassword, request);
 
+//        return new BaseResponse<>(0,user,"ok");
+        return ResultUtils.success(user);
     }
 
 
@@ -82,10 +94,11 @@ public class UserController {
      * @return
      */
     @GetMapping("/search")
-    public List<User> searchUsers(String username, HttpServletRequest request) {
+    public BaseResponse<List<User>> searchUsers(String username, HttpServletRequest request) {
 
         if (!isAdmin(request)){
-            return new ArrayList<>();
+//            return ResultUtils.error(ErrorCode.NO_AUTH);
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
 
 
@@ -95,7 +108,9 @@ public class UserController {
         }
 
         List<User> userList = userService.list(queryWrapper);
-        return userList.stream().map(user -> userService.getSafetyUser(user)).collect(Collectors.toList());
+        List<User> list =  userList.stream().map(user -> userService.getSafetyUser(user)).collect(Collectors.toList());
+
+        return ResultUtils.success(list);
     }
 
     /**
@@ -105,17 +120,20 @@ public class UserController {
      * @return
      */
     @PostMapping("/delete")
-    public boolean deleteUser(@RequestBody long id,HttpServletRequest request) {
+    public BaseResponse<Boolean> deleteUser(@RequestBody long id,HttpServletRequest request) {
 
         if (!isAdmin(request)){
-            return false;
+            throw new BusinessException(ErrorCode.NO_AUTH);
+
         }
 
         if (id <= 0) {
-            return false;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+
         }
 
-        return userService.removeById(id);
+        boolean b = userService.removeById(id);
+        return ResultUtils.success(b);
     }
 
     /**
@@ -125,13 +143,48 @@ public class UserController {
      */
     private boolean isAdmin(HttpServletRequest request){
         // 仅管理员可查询
-        Object userObj = request.getSession().getAttribute(UserConstant.USER_LOGIN_STATE);
+        Object userObj = request.getSession().getAttribute(USER_LOGIN_STATE);
 
         User user = (User) userObj;
 
 
         return user != null && user.getUserRole() == UserConstant.ADMIN_ROLE;
     }
+
+
+    @GetMapping("/current")
+    public BaseResponse<User> getCurrentUser(HttpServletRequest request) {
+        Object userObj = request.getSession().getAttribute(USER_LOGIN_STATE);
+        User currentUser = (User) userObj;
+        if (currentUser == null){
+            throw new BusinessException(ErrorCode.NOT_LOGIN);
+
+        }
+
+        long userId = currentUser.getId();
+        // todo 校验用户是否合法
+        User user = userService.getById(userId);
+
+        User safetyUser =  userService.getSafetyUser(user);
+
+        return ResultUtils.success(safetyUser);
+
+
+
+
+    }
+
+
+    @PostMapping("/logout")
+    public BaseResponse<Integer> userLogout(HttpServletRequest request) {
+        if (request == null){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+
+        }
+        int result = userService.userLogout(request);
+        return ResultUtils.success(result);
+    }
+
 
 
 }

@@ -2,8 +2,10 @@ package com.fire.usercenterdemo.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.fire.usercenterdemo.common.ErrorCode;
 import com.fire.usercenterdemo.constant.UserConstant;
 
+import com.fire.usercenterdemo.exception.BusinessException;
 import com.fire.usercenterdemo.mapper.UserMapper;
 import com.fire.usercenterdemo.model.domain.User;
 import com.fire.usercenterdemo.service.UserService;
@@ -16,6 +18,8 @@ import org.springframework.util.DigestUtils;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import static com.fire.usercenterdemo.constant.UserConstant.USER_LOGIN_STATE;
 
 /**
  * @author Admin
@@ -41,13 +45,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     public long userRegister(String userAccount, String userPassword, String checkPassword) {
         // 1.校验
         if (StringUtils.isAnyBlank(userAccount, userPassword, checkPassword)) {
-            return -1;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"参数为空");
         }
         if (userAccount.length() < 4) {
-            return -1;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"用户账号过短");
+
         }
         if (userPassword.length() < 8 || checkPassword.length() < 8){
-            return -1;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"用户密码过短");
+
         }
 
         // 账户不能包含特殊字符
@@ -66,7 +72,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         queryWrapper.eq("userAccount", userAccount);
         long count = userMapper.selectCount(queryWrapper);
         if (count > 0) {
-            return -1;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"账号重复");
+
         }
         // 2.加密
 
@@ -119,7 +126,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         User safetyUser = getSafetyUser(user);
 
         // 4.记录用户的登录态
-        request.getSession().setAttribute(UserConstant.USER_LOGIN_STATE, safetyUser);
+        request.getSession().setAttribute(USER_LOGIN_STATE, safetyUser);
 
         return safetyUser;
     }
@@ -131,6 +138,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
      */
     @Override
     public User getSafetyUser(User originUser){
+
+        if (originUser == null) {
+            return null;
+        }
+
         User safetyUser = new User();
         safetyUser.setId(originUser.getId());
         safetyUser.setUsername(originUser.getUsername());
@@ -147,6 +159,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     }
 
 
+    /**
+     * 用户注销
+     * @param request
+     * @return
+     */
+    @Override
+    public int userLogout(HttpServletRequest request) {
+        // 移除登录态
+        request.getSession().removeAttribute(USER_LOGIN_STATE);
+        return 1;
+    }
 }
 
 
